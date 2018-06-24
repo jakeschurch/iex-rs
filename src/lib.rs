@@ -1,7 +1,11 @@
+pub mod iextp;
+
 // TODO: implement batch_request()
 
 #[macro_use]
 extern crate serde_derive;
+extern crate byteorder;
+extern crate chrono;
 extern crate failure;
 extern crate reqwest;
 extern crate serde;
@@ -304,11 +308,11 @@ mod tests {
     use super::*;
 
     // NOTE(test): Unfortunately rust has no implementation of sub-testing, or at least not aware of as of yet.
+
     #[test]
     fn test_client_request_book() {
-        let client = Client;
+        let client = &Client;
         let symbol = "aapl";
-
         assert!(client.request(&Request::Book { symbol }).is_ok());
     }
 
