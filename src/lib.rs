@@ -1,7 +1,3 @@
-pub mod iextp;
-
-// TODO: implement batch_request()
-
 #[macro_use]
 extern crate serde_derive;
 extern crate byteorder;
@@ -10,15 +6,18 @@ extern crate failure;
 extern crate reqwest;
 extern crate serde;
 extern crate serde_json;
-
-use serde_json::Value;
-pub mod types;
+extern crate url;
 
 use failure::Error;
+use serde_json::Value;
+use std::borrow::Borrow;
 use std::result;
+use url::Url;
 
-/// `IEX_URL` is the URL base of IEX API.
-const IEX_URL: &str = "https://api.iextrading.com/1.0";
+pub mod iextp;
+pub mod types;
+
+pub use self::types::*;
 
 pub type Result<T> = result::Result<T, Error>;
 
@@ -144,19 +143,18 @@ pub enum Request<'a> {
     },
 }
 
+// IDEA: return vec<str> where index 0 is uri endpoint, rest are params.
 impl<'a> ToString for Request<'a> {
     fn to_string(&self) -> String {
         match self {
             Request::Book { symbol } => format!("stock/{}/book", symbol),
             Request::Chart {
-                symbol,
-                duration,
-                params,
+                symbol, duration, ..
             } => format!(
-                "stock/{}/chart/{}{}",
+                "stock/{}/chart/{}",
                 symbol,
                 duration.to_string(),
-                parse_params(params)
+                // parse_params(params)
             ),
             Request::Company { symbol } => format!("stock/{}/company", symbol),
             Request::DelayedQuote { symbol } => format!("stock/{}/delayed-quote", symbol),
@@ -212,26 +210,100 @@ impl Response {
 }
 
 /// `Client` acts as a Handler for the `Response` enum.
-#[derive(Default)]
-pub struct Client;
+pub struct Client {
+    _types: Vec<String>,
+    _symbols: Vec<&'static str>,
+    // _params:
+}
 
 impl Client {
     pub fn new() -> Self {
-        Client
+        Client {
+            _types: vec![],
+            _symbols: vec![],
+        }
     }
 
-    pub fn request(&self, req: &Request) -> Result<Response> {
-        let url = format!(
-            "{base}/{endpoint}",
-            base = IEX_URL,
-            endpoint = req.to_string()
+    #[must_use]
+    pub fn types(&mut self, types: Vec<Request<'static>>) -> () {
+        self._types = types.iter().map(|val| val.to_string()).collect()
+    }
+
+    pub fn symbols(&mut self, symbols: Vec<&'static str>) -> () {
+        self._symbols = symbols;
+    }
+
+    fn build_url(&self) {
+        // let symbols = &self._symbols;
+
+        let symbol_path: String = if self._symbols.iter().count() == 1 {
+            self._symbols.join(",")
+        } else {
+            String::from("market")
+        };
+
+        /// `IEX_STOCK` is the URL base of IEX Stocks API.
+        const IEX_STOCK: &'static str = "https://api.iextrading.com/1.0/stock";
+
+        let url_str = format!(
+            "{base_url}/stock/market/batch?symbols={symbols}&types={types}",
+            base_url = IEX_STOCK,
+            symbols = symbol_path,
+            types = self._types.join(",")
         );
 
-        Ok(reqwest::get(&url)?.json()?)
+        let options = Url::options();
+
+        let api = Url::parse(&url_str).unwrap();
     }
+
+    // #[must_use]
+    // pub fn request(&self) {
+    //     // unimplemented!();
+
+    //     let types_tup = &self._types;
+    //     let symbols_tup = match &self._symbols {
+    //         Some(symbols_tup) => symbols_tup.clone(),
+    //         None => ("types", vec![]),
+    //     };
+
+    //     let n_symbols = symbols_tup.1.iter().count();
+    //     // let is_batch: bool = types_tup.1.iter().count() > 1 || symbols_tup.1.iter().count() > 1;
+
+    //     let symbol_req = |n| -> &str {
+    //         if n == 1 {
+    //             return symbols_tup.1[0];
+    //         } else {
+    //             return "market";
+    //         }
+    //     };
+
+    //     let request_url = format!(
+    //         "https://api.iextrading.com/1.0/stock/{symbol}/batch",
+    //         symbol = symbol_req(n_symbols)
+    //     );
+
+    //     let url: Url;
+
+    //     let url_str: &str = if n_symbols > 1 {
+    //         Url::parse_with_params(&request_url, symbols_tup)
+    //             .unwrap()
+    //             .as_str()
+    //     } else {
+    //         request_url
+    //     };
+
+    //     // let url = format!(
+    //     //     "{base}/{endpoint}",
+    //     //     base = IEX_BASE,
+    //     //     endpoint = req.to_string()
+    //     // );
+
+    //     // Ok(reqwest::get(&url)?.json()?);
+    // }
 }
 
-#[derive(PartialEq, Eq)]
+#[derive(PartialEq, Eq, Debug)]
 pub enum ListParam {
     MostActive,
     Gainers,
@@ -252,266 +324,281 @@ impl ListParam {
     }
 }
 
-#[derive(PartialEq, Eq)]
+#[derive(PartialEq, Eq, Debug)]
 pub enum ChartParam {
-    /// boolean. If true, 1d chart will reset at midnight instead of the default behavior of 9:30am ET.
+    /// If true, 1d chart will reset at midnight instead of the default behavior of 9:30am ET.
     Reset(bool),
-    /// boolean. If true, runs a polyline simplification using the Douglas-Peucker algorithm. This is useful if plotting sparkline charts.
+    /// If true, runs a polyline simplification using the Douglas-Peucker algorithm. This is useful if plotting sparkline charts.
     Simplify(bool),
-    /// number. If passed, chart data will return every Nth element as defined by `Interval`.
+    /// If passed, chart data will return every Nth element as defined by `Interval`.
     Interval(usize),
-    /// boolean. If true, changeOverTime and marketChangeOverTime will be relative to previous day close instead of the first value.
+    /// If true, changeOverTime and marketChangeOverTime will be relative to previous day close instead of the first value.
     ChangeFromClose(bool),
-    /// number. If passed, chart data will return the last N elements.
+    /// If passed, chart data will return the last N elements.
     Last(usize),
 }
 
-impl ToString for ChartParam {
-    fn to_string(&self) -> String {
+impl ChartParam {
+    fn to_str(&self) -> String {
         match self {
-            ChartParam::Reset(res) => format!("chartReset={}", res),
-            ChartParam::Simplify(res) => format!("chartSimplify={}", res),
-            ChartParam::Interval(res) => format!("chartInterval={}", res),
-            ChartParam::ChangeFromClose(res) => format!("changeFromClose={}", res),
-            ChartParam::Last(res) => format!("chartLast={}", res),
+            ChartParam::Reset(val)
+            | ChartParam::Simplify(val)
+            | ChartParam::ChangeFromClose(val) => {
+                if *val == true {
+                    return String::from("true");
+                } else {
+                    return String::from("false");
+                }
+            }
+            ChartParam::Interval(val) | ChartParam::Last(val) => val.to_string(),
         }
     }
-}
 
-/// parse_params is a function to add a query to a base url.
-///
-/// # Examples
-///
-/// ```
-/// use iex::{ChartParam, parse_params};
-///
-/// assert_eq!("?chartReset=true", parse_params(&Some(vec!(ChartParam::Reset(true)))));
-/// ```
-// REVIEW|QUESTION(): Not sure why &Option is required rather than Option.
-pub fn parse_params(params: &Option<Vec<ChartParam>>) -> String {
-    if params.is_none() {
-        return String::from("");
-    }
-    let mut result = String::from("?");
-
-    for (i, param) in params.as_ref().unwrap().iter().enumerate() {
-        if i != 0 {
-            result += "&";
-        }
-        result += &param.to_string();
-    }
-    result
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    // NOTE(test): Unfortunately rust has no implementation of sub-testing, or at least not aware of as of yet.
-
-    #[test]
-    fn test_client_request_book() {
-        let client = &Client;
-        let symbol = "aapl";
-        assert!(client.request(&Request::Book { symbol }).is_ok());
-    }
-
-    #[test]
-    fn test_client_request_chart() {
-        let client = Client;
-        let symbol = "aapl";
-        let duration = Duration::OneDay;
-
-        assert!(
-            client
-                .request(&Request::Chart {
-                    symbol,
-                    duration,
-                    params: None
-                })
-                .is_ok()
-        );
-    }
-
-    #[test]
-    fn test_client_request_company() {
-        let client = Client;
-        let symbol = "aapl";
-
-        assert!(client.request(&Request::Company { symbol }).is_ok());
-    }
-
-    #[test]
-    fn test_client_request_delayed_quote() {
-        let client = Client;
-        let symbol = "aapl";
-
-        assert!(client.request(&Request::DelayedQuote { symbol }).is_ok());
-    }
-
-    #[test]
-    fn test_client_request_dividends() {
-        let client = Client;
-        let symbol = "aapl";
-        let duration = Duration::OneDay;
-        assert!(
-            client
-                .request(&Request::Dividends { symbol, duration })
-                .is_ok()
-        );
-    }
-
-    #[test]
-    fn test_client_request_earnings() {
-        let client = Client;
-        let symbol = "aapl";
-
-        assert!(client.request(&Request::Earnings { symbol }).is_ok());
-    }
-
-    #[test]
-    fn test_client_request_effective_spread() {
-        let client = Client;
-        let symbol = "aapl";
-
-        assert!(client.request(&Request::EffectiveSpread { symbol }).is_ok());
-    }
-
-    #[test]
-    fn test_client_request_financials() {
-        let client = Client;
-        let symbol = "aapl";
-
-        assert!(client.request(&Request::Financials { symbol }).is_ok());
-    }
-
-    #[test]
-    fn test_client_request_list() {
-        let client = Client;
-
-        assert!(
-            client
-                .request(&Request::List {
-                    param: ListParam::Gainers
-                })
-                .is_ok()
-        );
-    }
-
-    #[test]
-    fn test_client_request_logo() {
-        let client = Client;
-        let symbol = "aapl";
-
-        assert!(client.request(&Request::Logo { symbol }).is_ok());
-    }
-
-    #[test]
-    fn test_client_request_news() {
-        let client = Client;
-        let symbol = "aapl";
-        assert!(
-            client
-                .request(&Request::News {
-                    symbol,
-                    range: None
-                })
-                .is_ok()
-        );
-    }
-
-    #[test]
-    fn test_client_request_ohlc() {
-        let client = Client;
-        let symbol = "aapl";
-
-        assert!(client.request(&Request::Ohlc { symbol }).is_ok());
-    }
-
-    #[test]
-    fn test_client_request_peers() {
-        let client = Client;
-        let symbol = "aapl";
-
-        assert!(client.request(&Request::Peers { symbol }).is_ok());
-    }
-
-    #[test]
-    fn test_client_request_previous() {
-        let client = Client;
-        let symbol = "aapl";
-
-        assert!(client.request(&Request::Previous { symbol }).is_ok());
-    }
-
-    #[test]
-    fn test_client_request_price() {
-        let client = Client;
-        let symbol = "aapl";
-
-        assert!(client.request(&Request::Price { symbol }).is_ok());
-    }
-
-    #[test]
-    fn test_client_request_quote() {
-        let client = Client;
-        let symbol = "aapl";
-
-        assert!(client.request(&Request::Quote { symbol }).is_ok());
-    }
-
-    #[test]
-    fn test_client_request_relevant() {
-        let client = Client;
-        let symbol = "aapl";
-
-        assert!(client.request(&Request::Relevant { symbol }).is_ok());
-    }
-
-    #[test]
-    fn test_client_request_splits() {
-        let client = Client;
-        let symbol = "aapl";
-        let duration = Duration::OneDay;
-
-        assert!(
-            client
-                .request(&Request::Splits { symbol, duration })
-                .is_ok()
-        );
-    }
-
-    #[test]
-    fn test_client_request_stats() {
-        let client = Client;
-        let symbol = "aapl";
-
-        assert!(client.request(&Request::Stats { symbol }).is_ok());
-    }
-
-    #[test]
-    fn test_client_request_symbols() {
-        let client = Client;
-
-        assert!(client.request(&Request::Symbols).is_ok());
-    }
-
-    #[test]
-    fn test_client_request_threshold_securiteis() {
-        let client = Client;
-
-        assert!(
-            client
-                .request(&Request::ThresholdSecurities { date: None })
-                .is_ok()
-        );
-    }
-
-    #[test]
-    fn test_client_request_volume_by_venue() {
-        let client = Client;
-        let symbol = "aapl";
-
-        assert!(client.request(&Request::VolumeByVenue { symbol }).is_ok());
+    fn to_pair(&self) -> (&str, String) {
+        let first_arg: &str = match self {
+            ChartParam::Reset(_res) => "chartReset",
+            ChartParam::Simplify(_res) => "chartSimplify",
+            ChartParam::Interval(_res) => "chartInterval",
+            ChartParam::ChangeFromClose(_res) => "changeFromClose",
+            ChartParam::Last(_res) => "chartLast",
+        };
+        (first_arg.borrow(), self.to_str())
     }
 }
+
+// #[cfg(test)]
+// mod tests {
+//     use super::*;
+//     use url::Url;
+
+//     // TODO: implement/update logic in match statement.
+//     #[test]
+//     fn test_parse_params() {
+//         let client = Client;
+//         let req = "stock";
+//         let duration = Duration::OneDay;
+//         let params: Vec<ChartParam> = vec![ChartParam::Last(5), ChartParam::Reset(true)];
+
+//         let mut url = Url::parse("https://api.iextrading.com/1.0").unwrap();
+
+//         url.path_segments_mut()
+//             .unwrap()
+//             .push("stock")
+//             .push("aapl")
+//             .push("chart")
+//             .push(&duration.to_string());
+
+//         let m_params = params.iter().map(|p| p.to_pair());
+
+//         url = Url::parse_with_params(url.as_str(), m_params).unwrap();
+//         println!("{}", url);
+//     }
+
+//     // NOTE(test): Unfortunately rust has no implementation of sub-testing, or at least not aware of as of yet.
+//     #[test]
+//     fn test_client_request_book() {
+//         let client = Client;
+//         let symbol = "aapl";
+
+//         assert!(client.request(&Request::Book { symbol }).is_ok());
+//     }
+
+//     #[test]
+//     fn test_client_request_chart() {
+//         let client = Client;
+//         let symbol = "aapl";
+//         let duration = Duration::OneDay;
+
+//         assert!(
+//             client
+//                 .request(&Request::Chart {
+//                     symbol,
+//                     duration,
+//                     params: None
+//                 })
+//                 .is_ok()
+//         );
+//     }
+
+//     #[test]
+//     fn test_client_request_company() {
+//         let client = Client;
+//         let symbol = "aapl";
+
+//         assert!(client.request(&Request::Company { symbol }).is_ok());
+//     }
+
+//     #[test]
+//     fn test_client_request_delayed_quote() {
+//         let client = Client;
+//         let symbol = "aapl";
+
+//         assert!(client.request(&Request::DelayedQuote { symbol }).is_ok());
+//     }
+
+//     #[test]
+//     fn test_client_request_dividends() {
+//         let client = Client;
+//         let symbol = "aapl";
+//         let duration = Duration::OneDay;
+//         assert!(
+//             client
+//                 .request(&Request::Dividends { symbol, duration })
+//                 .is_ok()
+//         );
+//     }
+
+//     #[test]
+//     fn test_client_request_earnings() {
+//         let client = Client;
+//         let symbol = "aapl";
+
+//         assert!(client.request(&Request::Earnings { symbol }).is_ok());
+//     }
+
+//     #[test]
+//     fn test_client_request_effective_spread() {
+//         let client = Client;
+//         let symbol = "aapl";
+
+//         assert!(client.request(&Request::EffectiveSpread { symbol }).is_ok());
+//     }
+
+//     #[test]
+//     fn test_client_request_financials() {
+//         let client = Client;
+//         let symbol = "aapl";
+
+//         assert!(client.request(&Request::Financials { symbol }).is_ok());
+//     }
+
+//     #[test]
+//     fn test_client_request_list() {
+//         let client = Client;
+
+//         assert!(
+//             client
+//                 .request(&Request::List {
+//                     param: ListParam::Gainers
+//                 })
+//                 .is_ok()
+//         );
+//     }
+
+//     #[test]
+//     fn test_client_request_logo() {
+//         let client = Client;
+//         let symbol = "aapl";
+
+//         assert!(client.request(&Request::Logo { symbol }).is_ok());
+//     }
+
+//     #[test]
+//     fn test_client_request_news() {
+//         let client = Client;
+//         let symbol = "aapl";
+//         assert!(
+//             client
+//                 .request(&Request::News {
+//                     symbol,
+//                     range: None
+//                 })
+//                 .is_ok()
+//         );
+//     }
+
+//     #[test]
+//     fn test_client_request_ohlc() {
+//         let client = Client;
+//         let symbol = "aapl";
+
+//         assert!(client.request(&Request::Ohlc { symbol }).is_ok());
+//     }
+
+//     #[test]
+//     fn test_client_request_peers() {
+//         let client = Client;
+//         let symbol = "aapl";
+
+//         assert!(client.request(&Request::Peers { symbol }).is_ok());
+//     }
+
+//     #[test]
+//     fn test_client_request_previous() {
+//         let client = Client;
+//         let symbol = "aapl";
+
+//         assert!(client.request(&Request::Previous { symbol }).is_ok());
+//     }
+
+//     #[test]
+//     fn test_client_request_price() {
+//         let client = Client;
+//         let symbol = "aapl";
+
+//         assert!(client.request(&Request::Price { symbol }).is_ok());
+//     }
+
+//     #[test]
+//     fn test_client_request_quote() {
+//         let client = Client;
+//         let symbol = "aapl";
+
+//         assert!(client.request(&Request::Quote { symbol }).is_ok());
+//     }
+
+//     #[test]
+//     fn test_client_request_relevant() {
+//         let client = Client;
+//         let symbol = "aapl";
+
+//         assert!(client.request(&Request::Relevant { symbol }).is_ok());
+//     }
+
+//     #[test]
+//     fn test_client_request_splits() {
+//         let client = Client;
+//         let symbol = "aapl";
+//         let duration = Duration::OneDay;
+
+//         assert!(
+//             client
+//                 .request(&Request::Splits { symbol, duration })
+//                 .is_ok()
+//         );
+//     }
+
+//     #[test]
+//     fn test_client_request_stats() {
+//         let client = Client;
+//         let symbol = "aapl";
+
+//         assert!(client.request(&Request::Stats { symbol }).is_ok());
+//     }
+
+//     #[test]
+//     fn test_client_request_symbols() {
+//         let client = Client;
+
+//         assert!(client.request(&Request::Symbols).is_ok());
+//     }
+
+//     #[test]
+//     fn test_client_request_threshold_securiteis() {
+//         let client = Client;
+
+//         assert!(
+//             client
+//                 .request(&Request::ThresholdSecurities { date: None })
+//                 .is_ok()
+//         );
+//     }
+
+//     #[test]
+//     fn test_client_request_volume_by_venue() {
+//         let client = Client;
+//         let symbol = "aapl";
+
+//         assert!(client.request(&Request::VolumeByVenue { symbol }).is_ok());
+//     }
+// }

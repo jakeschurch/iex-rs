@@ -2,26 +2,42 @@
 use byteorder::{LittleEndian, ReadBytesExt};
 use chrono::{DateTime, NaiveDateTime, Utc};
 use std::io::Cursor;
-use std::str;
-use std::str::Utf8Error;
+
+pub mod tops;
 
 const SEGMENT_HEADER_SIZE: u16 = 40;
 const UNIX_YEAR: i64 = 1_000_000_000;
 
 pub trait Unmarshal {
-    fn unmarshall(_buf: &[u8]) -> Self;
+    fn unmarshal(buf: &[u8]) -> Self
+    where
+        Self: Sized;
 
-    fn parse_string(_buf: &[u8]) -> Result<&str, Utf8Error> {
-        str::from_utf8(_buf).and_then(|val| Ok(val.trim_right()))
+    // REVIEW|HACK|TEMP(parse_string): Cannot find a "normal" & efficient way to deal with strings, setting signature return var as Vec<char> for now.
+    fn parse_string(buf: &[u8]) -> Vec<char> {
+        buf.iter()
+            .map(|byte| *byte as char)
+            .filter(|c| *c != ' ')
+            .collect()
     }
 
-    fn parse_price(_buf: &[u8; 8]) -> f64 {
-        let n = Cursor::new(_buf).read_i64::<LittleEndian>().unwrap();
+    //len 8
+    fn parse_price(buf: &[u8]) -> f64 {
+        let n = Cursor::new(buf).read_i64::<LittleEndian>().unwrap();
         (n as f64) / 10000.00
     }
 
-    fn parse_timestamp(_buf: &[u8; 8]) -> DateTime<Utc> {
-        let timestamp = Cursor::new(_buf).read_u64::<LittleEndian>().unwrap() as i64;
+    fn parse_u32(buf: &[u8]) -> u32 {
+        Cursor::new(&buf).read_u32::<LittleEndian>().unwrap()
+    }
+
+    fn parse_u64(buf: &[u8]) -> u64 {
+        Cursor::new(&buf).read_u64::<LittleEndian>().unwrap()
+    }
+
+    // len 8
+    fn parse_timestamp(buf: &[u8]) -> DateTime<Utc> {
+        let timestamp = Cursor::new(buf).read_u64::<LittleEndian>().unwrap() as i64;
 
         let secs: i64 = timestamp / UNIX_YEAR;
         let n_secs = (timestamp % UNIX_YEAR) as u32;
@@ -29,22 +45,22 @@ pub trait Unmarshal {
         DateTime::<Utc>::from_utc(NaiveDateTime::from_timestamp(secs, n_secs), Utc)
     }
 
-    // REVIEW(parse_event_time) -- implement test function and adapt logic accordingly if needed.
-    fn parse_event_time(_buf: &[u8; 4]) -> DateTime<Utc> {
-        let timestamp = Cursor::new(_buf).read_u32::<LittleEndian>().unwrap() as i64;
+    // len 4
+    fn parse_event_time(buf: &[u8]) -> DateTime<Utc> {
+        let timestamp = Cursor::new(buf).read_u32::<LittleEndian>().unwrap() as i64;
         DateTime::<Utc>::from_utc(NaiveDateTime::from_timestamp(timestamp, 0), Utc)
     }
 }
 
 #[cfg(test)]
-mod tests {
+mod test {
     use super::*;
     use chrono::TimeZone;
 
     struct Mock;
     impl Unmarshal for Mock {
-        fn unmarshall(_buf: &[u8]) -> Self {
-            unimplemented!();
+        fn unmarshal(buf: &[u8]) -> Self {
+            Mock
         }
     }
 
@@ -52,11 +68,9 @@ mod tests {
     fn test_parse_string() {
         // ZIEXT
         let symbol_literal = &[0x5a, 0x49, 0x45, 0x58, 0x54, 0x20, 0x20, 0x20];
-
-        match Mock::parse_string(symbol_literal) {
-            Ok(val) => assert_eq!("ZIEXT", val),
-            Err(x) => panic!(x),
-        };
+        // HACK -- may want to change functionality of parse_string method.
+        let parsed: String = Mock::parse_string(symbol_literal).iter().collect();
+        assert_eq!(String::from("ZIEXT"), parsed);
     }
 
     #[test]
@@ -85,12 +99,13 @@ mod tests {
     #[test]
     // TODO(test_parse_event_time)
     fn test_parse_event_time() {
-        unimplemented!()
+        // 2017-04-17 16:00:00
+        let time_literal = &[0x80, 0xe6, 0xf4, 0x58];
+        let expected = Utc.ymd(2017, 4, 17).and_hms(16, 0, 0);
+        assert_eq!(expected, Mock::parse_event_time(time_literal));
     }
 
 }
-
-type Message = [u8];
 
 // #[derive(Debug, Default)]
 // struct Segment {

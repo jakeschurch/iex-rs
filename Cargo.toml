@@ -14,3 +14,7 @@ derive_builder = "0.5.1"
 
 chrono = "0.4"
 byteorder = "1.2.3"
+url = "1.2.7"
+
+[dev-dependencies]
+lazy_static = "1.0.1"
