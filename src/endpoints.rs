@@ -48,10 +48,15 @@ pub enum StocksEndpoint<'a> {
 
 impl<'a> Endpoint for StocksEndpoint<'a> {
     fn to_endpoint(self) -> String {
-        match self {
-            StocksEndpoint::Book => String::from("book"),
+        use self::StocksEndpoint::*;
 
-            StocksEndpoint::Chart { duration, params } => format!(
+        match self {
+            Book => String::from("book"),
+
+            Chart {
+                ref duration,
+                ref params,
+            } => format!(
                 "chart/{}?{chart_params}",
                 duration.to_string(),
                 chart_params = match params {
@@ -66,51 +71,51 @@ impl<'a> Endpoint for StocksEndpoint<'a> {
                 }
             ),
 
-            StocksEndpoint::Company => String::from("company"),
+            Company => String::from("company"),
 
-            StocksEndpoint::DelayedQuote => String::from("delayed-quote"),
+            DelayedQuote => String::from("delayed-quote"),
 
-            StocksEndpoint::Dividends { duration } => format!("dividends/{}", duration.to_string()),
+            Dividends { ref duration } => format!("dividends/{}", duration.to_string()),
 
-            StocksEndpoint::Earnings => String::from("earnings"),
+            Earnings => String::from("earnings"),
 
-            StocksEndpoint::EffectiveSpread => String::from("effective-spread"),
+            EffectiveSpread => String::from("effective-spread"),
 
-            StocksEndpoint::Financials => String::from("financials"),
+            Financials => String::from("financials"),
 
-            StocksEndpoint::List { param } => format!("list/{}", param.to_string()),
+            List { ref param } => format!("list/{}", param.to_string()),
 
-            StocksEndpoint::Logo => String::from("logo"),
+            Logo => String::from("logo"),
 
-            StocksEndpoint::News { range } => format!(
+            News { ref range } => format!(
                 "news/last/{}",
                 range.map(|r| r.to_string()).unwrap_or("".to_string()),
             ),
 
-            StocksEndpoint::Ohlc => String::from("ohlc"),
+            Ohlc => String::from("ohlc"),
 
-            StocksEndpoint::Peers => String::from("peers"),
+            Peers => String::from("peers"),
 
-            StocksEndpoint::Previous => String::from("previous"),
+            Previous => String::from("previous"),
 
-            StocksEndpoint::Price => String::from("price"),
+            Price => String::from("price"),
 
-            StocksEndpoint::Quote => String::from("quote"),
+            Quote => String::from("quote"),
 
-            StocksEndpoint::Relevant => String::from("relevant"),
+            Relevant => String::from("relevant"),
 
-            StocksEndpoint::Stats => String::from("stats"),
+            Stats => String::from("stats"),
 
-            StocksEndpoint::Splits { duration } => format!("splits/{}", duration.to_string()),
+            Splits { ref duration } => format!("splits/{}", duration.to_string()),
 
-            StocksEndpoint::TimeSeries => String::from("time-series"),
+            TimeSeries => String::from("time-series"),
 
-            StocksEndpoint::ThresholdSecurities { date } => format!(
+            ThresholdSecurities { ref date } => format!(
                 "threshold-securities/{}",
                 date.unwrap_or(Duration::None).to_string(),
             ),
 
-            StocksEndpoint::VolumeByVenue => String::from("volume-by-venue"),
+            VolumeByVenue => String::from("volume-by-venue"),
         }
     }
 }
@@ -132,18 +137,20 @@ pub enum Duration<'a> {
 
 impl<'a> ToString for Duration<'a> {
     fn to_string(&self) -> String {
+        use self::Duration::*;
+
         match self {
-            Duration::FiveYears => String::from("5y"),
-            Duration::TwoYears => String::from("2y"),
-            Duration::OneYear => String::from("1y"),
-            Duration::YearToDate => String::from("ytd"),
-            Duration::SixMonths => String::from("6m"),
-            Duration::ThreeMonths => String::from("3m"),
-            Duration::OneMonth => String::from("1m"),
-            Duration::OneDay => String::from("1d"),
-            Duration::Date(date) => format!("date/{}", date),
-            Duration::Dynamic => String::from("dynamic"),
-            Duration::None => String::from(""),
+            FiveYears => String::from("5y"),
+            TwoYears => String::from("2y"),
+            OneYear => String::from("1y"),
+            YearToDate => String::from("ytd"),
+            SixMonths => String::from("6m"),
+            ThreeMonths => String::from("3m"),
+            OneMonth => String::from("1m"),
+            OneDay => String::from("1d"),
+            Date(ref date) => format!("date/{}", date),
+            Dynamic => String::from("dynamic"),
+            None => String::from(""),
         }
     }
 }
@@ -165,12 +172,14 @@ pub enum ListParam {
 
 impl ToString for ListParam {
     fn to_string(&self) -> String {
+        use self::ListParam::*;
+
         match self {
-            ListParam::MostActive => String::from("mostactive"),
-            ListParam::Gainers => String::from("gainers"),
-            ListParam::Losers => String::from("losers"),
-            ListParam::IexVolume => String::from("iexvolume"),
-            ListParam::IexPercent => String::from("iexpercent"),
+            MostActive => String::from("mostactive"),
+            Gainers => String::from("gainers"),
+            Losers => String::from("losers"),
+            IexVolume => String::from("iexvolume"),
+            IexPercent => String::from("iexpercent"),
         }
     }
 }
@@ -191,12 +200,14 @@ pub enum ChartParam {
 
 impl ToString for ChartParam {
     fn to_string(&self) -> String {
+        use self::ChartParam::*;
+
         match self {
-            ChartParam::Reset(res) => format!("chartReset={}", res),
-            ChartParam::Simplify(res) => format!("chartSimplify={}", res),
-            ChartParam::Interval(res) => format!("chartInterval={}", res),
-            ChartParam::ChangeFromClose(res) => format!("changeFromClose={}", res),
-            ChartParam::Last(res) => format!("chartLast={}", res),
+            Reset(ref res) => format!("chartReset={}", res),
+            Simplify(ref res) => format!("chartSimplify={}", res),
+            Interval(ref res) => format!("chartInterval={}", res),
+            ChangeFromClose(ref res) => format!("changeFromClose={}", res),
+            Last(ref res) => format!("chartLast={}", res),
         }
     }
 }
